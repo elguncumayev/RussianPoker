@@ -23,27 +23,40 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
     public GameObject guessButton;
     public GameObject sendCardButton;
     public GameObject[] jokerWinLoseButtons;
+    public TMP_Text[] playersNames;
+    public TMP_Text[] playersScores;
+    public GameObject[] panels;
+    public Camera ServerCamera;
+    public GameObject panelJockLoseSuits;
+    public GameObject cardForServer;
 
     public static string[] suits = new string[] { "C", "D", "H", "S" };
     public static string[] values = new string[] { "6", "7", "8", "9", "10", "J", "Q", "K", "A" };
 
+    public Dictionary<string, GameObject> cardsWithGameObject;
     public List<string> deck;
     public string[] myCardsInGame;
-    private int guessesCounter = 0;
+    private int guessesSumCounter = 0;
+    private int guessCounter = 0;
 
     private const byte DrawCardsEventCode = 1;
     private const byte PlaceGuessEventCode = 2;
     private const byte SendCardEventCode = 4;
     private const byte SendAuthToSendCardEventCode = 5;
     private const byte SendGuessAuthCode = 6;
+    private const byte WhoTakesHandEventCode = 7;
+    private const byte UpdateScoresEventCode = 8;
 
+    private bool gameStart = true;
     private bool blindRound = false;
     private bool guessAuthority = false;
     private bool sendCardAuthority = false;
     private bool lastGuesser = false;
+    private bool firstPlayer = false;
     private string currentFirstCard = string.Empty;
     private string currentTrumpCard = string.Empty;
     private string mySelectedCard = string.Empty;
+    private string jockLoseSuit = string.Empty;
 
     private void OnEnable()
     {
@@ -58,6 +71,8 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
     // Start is called before the first frame update
     void Start()
     {
+        cardForServer.SetActive(false);
+        ServerCamera.gameObject.SetActive(false);
         deck = GenerateDeckClient();
         JockDrawClient();
     }
@@ -82,6 +97,7 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
     //Create cards on scene but not shown on screen
     void JockDrawClient()
     {
+        cardsWithGameObject = new Dictionary<string, GameObject>();
         float yOffset = 0;
         float zOffset = 0.03f;
         Debug.Log("JockDrawClient");
@@ -91,6 +107,7 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
             newCard.name = card;
             newCard.GetComponent<ClickHandler>().InGameTools = inGameTools;
             newCard.GetComponent<Selectable>().faceUp = true;
+            cardsWithGameObject.Add(card, newCard);
             yOffset += 0.1f;
             zOffset += 0.03f;
         }
@@ -104,6 +121,16 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
         // DrawCardsEvent - Code = 1
         if (eventCode == DrawCardsEventCode)
         {
+            guessCounter++;
+            if (guessCounter == 1)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    string scoreText = playersScores[i].text;
+                    playersScores[i].text = string.Format("G  - | W  - | S  {0}", scoreText.Substring(17));
+                }
+            }
+            else if (guessCounter == 4) guessCounter = 0;
             Debug.Log("DrawCardsEvent Start");
             //Debug.Log("CustomData length : " + (string[])photonEvent.CustomData);
             //data is which player to recieve, cards and blindRound boolean
@@ -136,11 +163,25 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
             {
                 currentFirstCard = (string)customData[1];
                 currentTrumpCard = (string)customData[2];
+                firstPlayer = (bool)customData[3];
                 sendCardAuthority = true;
             }
         }
         else if (eventCode == SendGuessAuthCode)
         {
+            if (gameStart)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    int oneOrTwo = PhotonNetwork.PlayerList.Length == 5 ? 1 : 2;
+                        playersNames[i].text = PhotonNetwork.PlayerList[i+oneOrTwo].NickName;
+                    if (PhotonNetwork.LocalPlayer.NickName.Equals(PhotonNetwork.PlayerList[i+oneOrTwo].NickName))
+                    {
+                        panels[i].GetComponent<Image>().color = Color.green;
+                    }
+                }
+                gameStart = false;
+            }
             object[] customData = (object[])photonEvent.CustomData;
 
             object[] player = new object[] { ((object[])customData[0])[0], ((object[])customData[0])[1] };
@@ -150,9 +191,48 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
                 if (playerCounterForGuess == 3)
                 {
                     lastGuesser = true;
-                    guessesCounter = int.Parse(customData[2].ToString());
+                    guessesSumCounter = int.Parse(customData[2].ToString());
                 }
                 guessAuthority = true;
+            }
+        }
+        else if (eventCode == PlaceGuessEventCode)
+        {
+            object[] playerInfo = (object[])photonEvent.CustomData;
+            for (int i = 0; i < 4; i++)
+            {
+                if (playersNames[i].text.Equals(playerInfo[0].ToString()))
+                {
+                    string text = playersScores[i].text;
+                    playersScores[i].text = text.Substring(0, 3) + playerInfo[2].ToString() + text.Substring(4);
+                }
+            }
+        }
+        else if(eventCode == WhoTakesHandEventCode)
+        {
+            string name = (string)photonEvent.CustomData;
+            for(int i = 0; i < 4; i++)
+            {
+                if (name.Equals(playersNames[i].text))
+                {
+                    string scoreText = playersScores[i].text;
+                    int currentWins = scoreText[10].Equals('-') ? 0 : int.Parse(scoreText[10].ToString());
+                    playersScores[i].text = string.Format("G  {0} | W  {1} | S  {2}", scoreText[3], currentWins + 1, scoreText.Substring(17));
+                }
+            }
+        }
+        else if(eventCode == UpdateScoresEventCode)
+        {
+            object[] data = (object[])photonEvent.CustomData;
+            for(int i = 0; i < 4; i++)
+            {
+                for(int j = 0; j < 4; j++)
+                {
+                    if (playersNames[i].text.Equals(data[j].ToString()))
+                    {
+                        playersScores[i].text = playersScores[i].text.Substring(0,17) + data[j+4].ToString();
+                    }
+                }
             }
         }
     }
@@ -165,9 +245,17 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
         foreach(string card in myCardsInGame)
         {
             Debug.Log(card);
-            GameObject myCard = GameObject.Find(card);
-            if(blindRound) myCard.GetComponent<Selectable>().faceUp = false;
-            myCard.transform.position = new Vector3(positionForHandCards.transform.position.x + xOffset, positionForHandCards.transform.position.y, zOffset);
+
+            //DICTIONARY CHANGE #1
+            //STARTS HERE
+            
+            //GameObject myCard = GameObject.Find(card);
+            //GameObject myCard = cardsWithGameObject[card];
+
+            if(blindRound) cardsWithGameObject[card].GetComponent<Selectable>().faceUp = false;
+            cardsWithGameObject[card].transform.position = new Vector3(positionForHandCards.transform.position.x + xOffset, positionForHandCards.transform.position.y, zOffset);
+            //END HERE
+
             xOffset += 1.3f;
             zOffset -= 0.1f;
         }
@@ -196,7 +284,11 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
                 PhotonNetwork.RaiseEvent(SendCardEventCode, data, raiseEventOptions, SendOptions.SendReliable);
 
                 Debug.Log("Cardc to find: " + mySelectedCard);
-                GameObject.Find(mySelectedCard).transform.position = positionForDeck.transform.position;
+
+                //DICTIONARY CHANGE #2
+                //GameObject.Find(mySelectedCard).transform.position = positionForDeck.transform.position;
+                cardsWithGameObject[mySelectedCard].transform.position = positionForDeck.transform.position;
+
                 myCardsInGame  =  DeleteCardFromHand(mySelectedCard);
                 mySelectedCard = string.Empty;
                 
@@ -235,9 +327,17 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
             {
                 //custom data: Sender and selected card
                 //object[] data = new object[] { new CardPlayerInfo(PhotonNetwork.LocalPlayer.NickName, PhotonNetwork.LocalPlayer.ActorNumber), mySelectedCard };
-                object[] data = new object[] { new object[] { PhotonNetwork.LocalPlayer.NickName, PhotonNetwork.LocalPlayer.ActorNumber, 0, 0, 0, 0,string.Empty }, mySelectedCard+'L' };
+                object[] data = new object[] { new object[] { PhotonNetwork.LocalPlayer.NickName, PhotonNetwork.LocalPlayer.ActorNumber, 0, 0, 0, 0,string.Empty }, mySelectedCard + (firstPlayer ? jockLoseSuit : "L") };
                 RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
                 PhotonNetwork.RaiseEvent(SendCardEventCode, data, raiseEventOptions, SendOptions.SendReliable);
+
+                Debug.Log("Cardc to find: " + mySelectedCard);
+
+                //DICTIONARY CHANGE #3
+                //GameObject.Find(mySelectedCard.Substring(0,3)).transform.position = positionForDeck.transform.position;
+                cardsWithGameObject[mySelectedCard.Substring(0, 3)].transform.position = positionForDeck.transform.position;
+
+                myCardsInGame = DeleteCardFromHand(mySelectedCard);
                 mySelectedCard = string.Empty;
 
                 sendCardButton.SetActive(false);
@@ -245,6 +345,9 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
                 jokerWinLoseButtons[1].SetActive(false);
 
                 sendCardAuthority = false;
+                jockLoseSuit = string.Empty;
+                inGameTools.GetComponent<InGameToolsScript>().selectedCard = string.Empty;
+                firstPlayer = false;
             }
         }
     }
@@ -252,8 +355,8 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
     // Can player sent selected card to table
     private bool IsOkCard(string mySelectedCard)
     {
-        
         if (currentFirstCard.Equals(string.Empty)) return true; //first card is mine
+        if (currentFirstCard[0] == 'B' || currentFirstCard[0] == 'R') return true; //first card is joker
         if (currentFirstCard[0].Equals(mySelectedCard[0]))//my Card is same kind as first card
         {
             return true;
@@ -336,7 +439,7 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
 
             if (lastGuesser)
             {
-                if (myCardsInGame.Length - guess == guessesCounter)
+                if (myCardsInGame.Length - guess == guessesSumCounter)
                 {
                     Debug.Log("Wrong number to guess try again");
                     return;
@@ -347,22 +450,75 @@ public class GameLogicForClient : MonoBehaviour, IOnEventCallback
             PhotonNetwork.RaiseEvent(PlaceGuessEventCode, player, raiseEventOptions, SendOptions.SendReliable);
             guessAuthority = false;
             lastGuesser = false;
-            guessesCounter = 0;
+            guessesSumCounter = 0;
+            for(int i = 0; i < 4; i++)
+            {
+                if (playersNames[i].text.Equals(PhotonNetwork.LocalPlayer.NickName))
+                {
+                    string myScore = playersScores[i].text;
+                    playersScores[i].text = string.Format("G  {0} | W  - | S  {1}", guess, myScore.Substring(17));
+                }
+            }
 
             sliderToGuess.gameObject.SetActive(false);
             guessButton.SetActive(false);
 
             foreach(string card in myCardsInGame)
             {
-                GameObject myCard = GameObject.Find(card);
-                myCard.GetComponent<Selectable>().faceUp = true;
+                
+                //DICTIONARY CHANGE #4
+                //STARTS HERE
+                //GameObject myCard = GameObject.Find(card);
+                //myCard.GetComponent<Selectable>().faceUp = true;
+
+                cardsWithGameObject[card].GetComponent<Selectable>().faceUp = true;
+                //END HERE
+
             }
 
         }
     }
+
+    public void JockLoseChoice()
+    {
+        if (firstPlayer)
+        {
+            panelJockLoseSuits.SetActive(true);
+        }
+        else
+        {
+            SendCardEventJockLose();
+        }
+    }
+
+    public void JockLoseClubs()
+    {
+        jockLoseSuit = "C";
+        SendCardEventJockLose();
+        panelJockLoseSuits.SetActive(false);
+    }
+    public void JockLoseDiamonds()
+    {
+        jockLoseSuit = "D";
+        SendCardEventJockLose();
+        panelJockLoseSuits.SetActive(false);
+    }
+    public void JockLoseHearts()
+    {
+        jockLoseSuit = "H";
+        SendCardEventJockLose();
+        panelJockLoseSuits.SetActive(false);
+    }
+    public void JockLoseSpades()
+    {
+        jockLoseSuit = "S";
+        SendCardEventJockLose();
+        panelJockLoseSuits.SetActive(false);
+    }
+
     private bool PlayersEquals(object[] first, object[] second)
     {
-        if ( ( (string) first[0]).Equals( (string) second[0]) ) return true;
+        if (((string)first[0]).Equals((string)second[0])) return true;
         //else if (!(first[1] == second[1])) return false;
         else return false;
     }

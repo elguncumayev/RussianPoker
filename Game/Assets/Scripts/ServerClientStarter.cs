@@ -5,7 +5,7 @@ public class ServerClientStarter : MonoBehaviour
 
     private string role = "SERVER";        //"CLIENT" 
     public GameObject server, client;
-
+    public GameObject gameScripts;
 
     /*
      Game will start due to role:
@@ -20,6 +20,7 @@ public class ServerClientStarter : MonoBehaviour
         else
         {
             client.SetActive(true);
+            gameScripts.SetActive(false);
         }
     }
 }

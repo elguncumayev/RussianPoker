@@ -9,9 +9,4 @@ public class CreateGame : MonoBehaviour
     {
         game.SetActive(false);
     }
-    public void PlayGame ()
-    {
-        game.SetActive(true);
-        menu.enabled = false;
-    }
 }

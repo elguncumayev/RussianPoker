@@ -23,13 +23,24 @@ public class PhotonClient : MonoBehaviourPunCallbacks
     void Awake()
     {
         PhotonNetwork.ConnectUsingSettings();
-        PhotonNetwork.NetworkingClient.AppId = PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime;
-        PhotonNetwork.JoinLobby(TypedLobby.Default);    
+        PhotonNetwork.NetworkingClient.AppId = PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime;  
     }
 
+    public override void OnConnectedToMaster()
+    {
+        //base.OnConnectedToMaster();
+        Debug.Log("OnMaster");
+        PhotonNetwork.JoinLobby(TypedLobby.Default);
+    }
     public override void OnJoinedLobby()
     {
         Debug.Log("Client: Joined Lobby");
+    }
+
+    public override void OnJoinRoomFailed(short returnCode, string message)
+    {
+        Debug.Log("failed to join room");
+        base.OnJoinRoomFailed(returnCode, message);
     }
 
     public void JoinGame()
@@ -67,7 +78,9 @@ public class PhotonClient : MonoBehaviourPunCallbacks
     private void SendMyInfoToMaster(object[] playerInfo)
     {
         //Custom data is CardPlayerInfo 
-        RaiseEventOptions raiseEventOptions = new RaiseEventOptions() { Receivers = ReceiverGroup.MasterClient };
+        RaiseEventOptions raiseEventOptions = new RaiseEventOptions() { Receivers = ReceiverGroup.Others };
         PhotonNetwork.RaiseEvent(SendMyInfoToMasterEventCode, playerInfo, raiseEventOptions, SendOptions.SendReliable);
     }
+
+
 }

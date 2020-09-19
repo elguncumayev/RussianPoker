@@ -1,11 +1,12 @@
 ﻿using UnityEngine;
 using UnityEngine.EventSystems;
 
-public class ClickHandler : MonoBehaviour,IPointerDownHandler
+public class ClickHandler : MonoBehaviour, IPointerDownHandler
 {
     public GameObject sendCardButton;
     public GameObject InGameTools;
     public GameObject[] jokerWinLoseButtons;
+    public GameObject panelJockLoseChoice;
 
     //Click handler on cards: to select, deselect and change positions as well
     public void OnPointerDown(PointerEventData eventData)
@@ -26,6 +27,7 @@ public class ClickHandler : MonoBehaviour,IPointerDownHandler
             {
                 jokerWinLoseButtons[0].SetActive(false);
                 jokerWinLoseButtons[1].SetActive(false);
+                panelJockLoseChoice.SetActive(false);
                 sendCardButton.SetActive(true);
             }
             transform.position = new Vector3(transform.position.x, transform.position.y + 0.5f, transform.position.z);
@@ -43,6 +45,7 @@ public class ClickHandler : MonoBehaviour,IPointerDownHandler
             {
                 jokerWinLoseButtons[0].SetActive(false);
                 jokerWinLoseButtons[1].SetActive(false);
+                panelJockLoseChoice.SetActive(false);
                 sendCardButton.SetActive(true);
             }
             GameObject lastSelectedCard = GameObject.Find(selectedCard);
@@ -55,6 +58,7 @@ public class ClickHandler : MonoBehaviour,IPointerDownHandler
         {
             jokerWinLoseButtons[0].SetActive(false);
             jokerWinLoseButtons[1].SetActive(false);
+            panelJockLoseChoice.SetActive(false);
             sendCardButton.SetActive(false);
             transform.position = new Vector3(transform.position.x, transform.position.y - 0.5f, transform.position.z);
             InGameTools.GetComponent<InGameToolsScript>().selectedCard = string.Empty;
@@ -62,9 +66,9 @@ public class ClickHandler : MonoBehaviour,IPointerDownHandler
         Debug.Log("this is " + this.gameObject.name);
     }
 
-    //When all cards in hand gone deselect last card
-    public void GuessButtonDeselect()
-    {
-        InGameTools.GetComponent<InGameToolsScript>().selectedCard = string.Empty;
-    }
+    ////When all cards in hand gone deselect last card
+    //public void GuessButtonDeselect()
+    //{
+    //    InGameTools.GetComponent<InGameToolsScript>().selectedCard = string.Empty;
+    //}
 }

@@ -5,6 +5,7 @@ using Photon.Pun;
 using Photon.Realtime;
 using TMPro;
 using System.Collections;
+using System;
 
 /*
     Main place where all game logic happens on Server side
@@ -24,6 +25,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     public GameObject cardPrefab;
     public GameObject DeckForPosition;
     public GameObject[] playerPositionsOnTable;
+    public GameObject[] turnCircles;
     public GameObject InGameTools;
     public PhotonView clientPhotonView;
     public TMP_Text[] scoreTable;
@@ -34,6 +36,8 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     public TMP_Text turnPlayer;
     public TMP_Text jocker;
     public TMP_Text tookHand;
+    public Canvas BeforeGameCanvas;
+    public TMP_Text loseJock;
 
     public static string[] suits = new string[] { "C", "D", "H", "S" };
     public static string[] values = new string[] { "6", "7", "8", "9", "10", "J", "Q", "K", "A" };
@@ -59,6 +63,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     private string greaterJocker = string.Empty;
 
     public string currentTrumpCard = string.Empty;
+    public string currentTrumpCardClonServer = string.Empty;
     public string currentFirstCard = string.Empty;
     private const byte DrawCardsEventCode = 1;
     private const byte PlaceGuessEventCode = 2;
@@ -66,6 +71,13 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     private const byte SendCardEventCode = 4;
     private const byte SendAuthToSendCardEventCode = 5;
     private const byte SendGuessAuthCode = 6;
+    private const byte WhoTakesHandEventCode = 7;
+    private const byte UpdateScoresEventCode = 8;
+    private const byte ClonServerStartGameEventCode = 9;
+    private const byte SendRoundAndHandInfoEventCode = 10;
+    private const byte SendTurnPlayerEventCode = 11;
+    private const byte SendTrumpCardEventCode = 12;
+
 
     public override void OnEnable()
     {
@@ -95,20 +107,27 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
                 scoreTable[i].text = string.Format("{0}. G: {1} ; W: {2} ; S: {3}", ((string)playerInfoList[i, 0]) == string.Empty ? "NN" : ((string)playerInfoList[i, 0]).Substring(0, 2), playerInfoList[i, 2].ToString()[0], playerInfoList[i, 3], playerInfoList[i, 4]);
             }
         }
-
         roundText.text = string.Format("Round: {0}\nHand: {1}", currentRound, currentHand);
     }
+
     public void StartGameAsync()
     {
+        ClonServerStartGameEvent();
         // Start game on Start button click
         for (int i = 0; i < 4; i++)
         {
             playerNames[i].text = (string)playerInfoList[i, 0];
         }
-
         gameStart = true;
         inGameUI.gameObject.SetActive(true);
         StartCoroutine(PlayCardsAsync());
+    }
+
+    private void ClonServerStartGameEvent()
+    {
+        object data = 1;
+        RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+        PhotonNetwork.RaiseEvent(ClonServerStartGameEventCode, data, raiseEventOptions, SendOptions.SendReliable);
     }
 
     //All rounds in one place with different arguments for each round
@@ -127,7 +146,22 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         Debug.Log("Round 1 Start");
         JockDrawServer();
         startPlayer = RandomPlayerInt();
-        /*turnPlayer.text = string.Format("Turn\n{0}", (string)playerInfoList[startPlayer, 0]);
+        for(int i = 0; i < 4; i++)
+        {
+            if(i == startPlayer)
+            {
+                turnCircles[i].SetActive(true);
+            }
+            else
+            {
+                turnCircles[i].SetActive(false);
+            }
+        }
+        SendTurnPlayerEvent(startPlayer);
+
+            //Clear this statement after tests
+        turnPlayer.text = string.Format("Turn\n{0}", (string)playerInfoList[startPlayer, 0]);
+        
         currentRound++;
         yield return StartCoroutine(Round1to4Async());
         StopCoroutine(Round1to4Async());
@@ -135,7 +169,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
 
         Debug.Log("Round 2 Start");
         startPlayer = NextPlayerInt(startPlayer);
-        Debug.Log("Start player : " + playerInfoList[startPlayer,0].ToString());
+        Debug.Log("Start player : " + playerInfoList[startPlayer, 0].ToString());
         currentRound++;
         yield return StartCoroutine(Round1to4Async());
         StopCoroutine(Round1to4Async());
@@ -309,11 +343,11 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         yield return StartCoroutine(RoundNoTrAsync());
         StopCoroutine(RoundNoTrAsync());
         Debug.Log("Round 26 End");
-        noTrumpRound = false;*/
+        noTrumpRound = false;
 
         blindRound = true;
         Debug.Log("Round 27 Start");
-        //startPlayer = NextPlayerInt(startPlayer);
+        startPlayer = NextPlayerInt(startPlayer);
         currentRound++;
         yield return StartCoroutine(RoundBlAsync());
         StopCoroutine(RoundBlAsync());
@@ -340,6 +374,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator RoundBlAsync()
     {
         currentHand = 9;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(9));
         StopCoroutine(DrawCardsEvent(0));
@@ -351,6 +386,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator RoundNoTrAsync()
     {
         currentHand = 9;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(9));
         StopCoroutine(DrawCardsEvent(0));
@@ -363,6 +399,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round12to15Async()
     {
         currentHand = 9;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(9));
         StopCoroutine(DrawCardsEvent(0));
@@ -374,6 +411,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round11and16Async()
     {
         currentHand = 8;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(8));
         StopCoroutine(DrawCardsEvent(0));
@@ -385,6 +423,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round10and17Async()
     {
         currentHand = 7;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(7));
         StopCoroutine(DrawCardsEvent(0));
@@ -396,6 +435,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round9and18Async()
     {
         currentHand = 6;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(6));
         StopCoroutine(DrawCardsEvent(0));
@@ -407,6 +447,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round8and19Async()
     {
         currentHand = 5;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(5));
         StopCoroutine(DrawCardsEvent(0));
@@ -418,6 +459,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round7and20Async()
     {
         currentHand = 4;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(4));
         StopCoroutine(DrawCardsEvent(4));
@@ -429,6 +471,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round6and21Async()
     {
         currentHand = 3;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(3));
         StopCoroutine(DrawCardsEvent(0));
@@ -440,6 +483,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round5and22Async()
     {
         currentHand = 2;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(2));
         StopCoroutine(DrawCardsEvent(0));
@@ -451,12 +495,27 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
     IEnumerator Round1to4Async()
     {
         currentHand = 1;
+        SendRoundAndHandInfoEvent();
         Shuffle(deck);
         yield return StartCoroutine(DrawCardsEvent(1));
         StopCoroutine(DrawCardsEvent(0));
         yield return StartCoroutine(PlayHandsAsync(1));
         StopCoroutine(PlayHandsAsync(0));
         UpdateScore();
+    }
+
+    private void SendRoundAndHandInfoEvent()
+    {
+        object data = new object[] { currentRound, currentHand};
+        RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+        PhotonNetwork.RaiseEvent(SendRoundAndHandInfoEventCode, data, raiseEventOptions, SendOptions.SendReliable);
+    }
+
+    private void SendTurnPlayerEvent(int turnPlayerInt)
+    {
+        object data = turnPlayerInt;
+        RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+        PhotonNetwork.RaiseEvent(SendTurnPlayerEventCode, data, raiseEventOptions, SendOptions.SendReliable);
     }
 
     //Calculate and give scores to players after each round
@@ -470,7 +529,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
             //player guess more than 0 but does not win any
             if (guess > 0 && wins == 0)
             {
-                playerInfoList[i, 4] = (int)playerInfoList[i, 4] - 10 * (blindRound ? 2 : 1);
+                playerInfoList[i, 4] = (int)playerInfoList[i, 4] - 10 * (blindRound ? 2 : 1) * guess;
             }
 
             else if (guess == wins)
@@ -479,12 +538,20 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
             }
             else
             {
-                playerInfoList[i, 4] = (int)playerInfoList[i, 4] + wins;
+                playerInfoList[i, 4] = (int)playerInfoList[i, 4] + wins * (blindRound ? 2 : 1);
             }
 
             playerInfoList[i, 2] = -1;
             playerInfoList[i, 3] = 0;
         }
+        UpdateScoresEvent();
+    }
+
+    private void UpdateScoresEvent()
+    {
+        object data = new object[] { playerInfoList[0,0],playerInfoList[1,0],playerInfoList[2,0],playerInfoList[3,0],playerInfoList[0,4],playerInfoList[1,4],playerInfoList[2,4], playerInfoList[3, 4] } ;                   
+        RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+        PhotonNetwork.RaiseEvent(UpdateScoresEventCode, data, raiseEventOptions, SendOptions.SendReliable);
     }
 
     IEnumerator PlayHandsAsync(int cards)
@@ -494,22 +561,48 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         //Send authority to send cards back and send current first card and trump card on table
         for (int i = 0; i < cards; i++)
         {
+            bool firstPlayer = true;
             currentFirstCard = string.Empty;
             for (int j = 0; j < 4; j++)
             {
+                for (int k = 0; k < 4; k++)
+                {
+                    if (k == currentQueue)
+                    {
+                        turnCircles[k].SetActive(true);
+                    }
+                    else
+                    {
+                        turnCircles[k].SetActive(false);
+                    }
+                }
+                SendTurnPlayerEvent(currentQueue);
+                //Clear this statement after tests
                 turnPlayer.text = (string)playerInfoList[currentQueue, 0];
-                SendAuthToSendCardEvent();
+
+                SendAuthToSendCardEvent(firstPlayer);
                 while (((string)playerInfoList[currentQueue, 6]).Equals(string.Empty))
                 {
                     yield return new WaitForSeconds(1);
                 }
                 Debug.Log((string)playerInfoList[currentQueue, 0] + (string)playerInfoList[currentQueue, 6]);
                 currentQueue = NextPlayerInt(currentQueue);
+                firstPlayer = false;
             }
             ChooseWinnerAndReset();//Will reset currentSelectedCard
             tookHand.gameObject.SetActive(true);
             tookHand.text = string.Format("{0} took",playerInfoList[currentQueue,0].ToString());
-            yield return new WaitForSeconds(2);
+            yield return new WaitForSeconds(3);
+            /*Differ starts here*/
+            for(int g= 0; g < 4; g++)
+            {
+                string cardName = (string)playerInfoList[g, 6];
+                GameObject selected = GameObject.Find(cardName.Length == 4 ? cardName.Substring(0, 3) : cardName);
+                selected.transform.position = DeckForPosition.transform.position;
+                selected.GetComponent<Selectable>().faceUp = true;
+                playerInfoList[g, 6] = string.Empty;
+            }
+            /*End here*/
             tookHand.gameObject.SetActive(false);
         }
     }
@@ -523,6 +616,17 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         if (trumpSuit == 'C' || trumpSuit == 'S') currentTrumpColor = 'B';
         else currentTrumpColor = 'R';
 
+        for(int i = 0; i<4; i++)//if first player played jock to lose
+        {
+            if (((string)playerInfoList[i, 6]).Length == 4)
+            {
+                if(((string)playerInfoList[i, 6])[3] != 'L')
+                {
+                    currentFirstCard = ((string)playerInfoList[i, 6])[3] + "5";
+                }
+            }
+        }
+
         for (int i = 0; i < 4; i++)
         {
             char suit = ((string)playerInfoList[i, 6])[0];
@@ -533,7 +637,15 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
                 //Player wants lose or win 
                 if (((string)playerInfoList[i, 6]).Length == 4) // if length is 4 it means player wants to lose
                 {
-                    playerInfoList[i, 5] = 0;
+                    if(((string)playerInfoList[i, 6])[3] == 'L')
+                    {
+                        playerInfoList[i, 5] = 0;
+                    }
+                    else
+                    {
+                        //currentFirstCard = ((string)playerInfoList[i, 6])[3] + "5";
+                        playerInfoList[i, 5] = 10;
+                    }
                 }
                 else
                 {
@@ -594,12 +706,23 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
             {
                 playerInfoList[i, 3] = (int)playerInfoList[i, 3] + 1;
                 currentQueue = i;
+                WhoTakesHandEvent(currentQueue);
             }
             playerInfoList[i, 5] = 0;
-            GameObject.Find((string)playerInfoList[i, 6]).transform.position = DeckForPosition.transform.position;
-            playerInfoList[i, 6] = string.Empty;
-
+            //string cardName = (string)playerInfoList[i, 6];
+            //GameObject selected = GameObject.Find(cardName.Length == 4 ? cardName.Substring(0,3) : cardName);
+            //selected.transform.position = DeckForPosition.transform.position;
+            //selected.GetComponent<Selectable>().faceUp = true;
+            //playerInfoList[i, 6] = string.Empty;
         }
+        loseJock.gameObject.SetActive(false);
+    }
+
+    private void WhoTakesHandEvent(int winner)
+    {
+        object data = (string)playerInfoList[winner, 0];
+        RaiseEventOptions raiseEventOptions = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+        PhotonNetwork.RaiseEvent(WhoTakesHandEventCode, data, raiseEventOptions, SendOptions.SendReliable);
     }
 
     //EVENT -> CODE = 1
@@ -646,7 +769,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         if (!noTrumpRound)
         {
             currentTrumpCard = deck[4 * hand];
-            if (currentTrumpCard[0] == 'B' || currentTrumpCard[0] == 'R') // if trump card is joker then no trump card
+            if (currentTrumpCard[0] == 'B' || currentTrumpCard[0] == 'R') // if trump card is joker then "NOT" trump card
             {
                 GameObject.Find(currentTrumpCard).transform.position = new Vector3(DeckForPosition.transform.position.x, DeckForPosition.transform.position.y, -0.5f);
                 currentTrumpCard = "NOT";
@@ -675,15 +798,33 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
             }
         }
 
+        SendTrumpCardEvent(currentTrumpCard);
+
         playerCount = startPlayer;
         for (int i = 0; i < 4; i++)
         {
             SendAuthToGuessEvent(playerCount);
             Debug.Log("playerCounterForGuess : " + playerCounterForGuess);
+
+            for (int k = 0; k < 4; k++)
+            {
+                if (k == playerCount)
+                {
+                    turnCircles[k].SetActive(true);
+                }
+                else
+                {
+                    turnCircles[k].SetActive(false);
+                }
+            }
+            SendTurnPlayerEvent(playerCount);
             while (playerCounterForGuess == i)
             {
                 Debug.Log("Wait for guesses!!!");
+                
+                //Clear this statement
                 turnPlayer.text = (string)playerInfoList[playerCount, 0];
+                
                 yield return new WaitForSeconds(1);
             }
             playerCount = NextPlayerInt(playerCount);
@@ -692,16 +833,23 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         Debug.Log("All players has guessed");
     }
 
+    private void SendTrumpCardEvent(string trumpCard)
+    {
+        object data = trumpCard;
+        RaiseEventOptions raiseEventOptions = new RaiseEventOptions() { Receivers = ReceiverGroup.Others };
+        PhotonNetwork.RaiseEvent(SendTrumpCardEventCode, data, raiseEventOptions, SendOptions.SendReliable);
+    }
+
 
     // EVENT -> CODE = 5
     // Send auth each player on his/her turn to send card
-    private void SendAuthToSendCardEvent()
+    private void SendAuthToSendCardEvent(bool firstPlayer)
     {
         object[] datasome = new object[] { playerInfoList[currentQueue, 0], playerInfoList[currentQueue, 1], playerInfoList[currentQueue, 2], playerInfoList[currentQueue, 3], playerInfoList[currentQueue, 4], playerInfoList[currentQueue, 5], playerInfoList[currentQueue, 6] };
         Debug.Log("SendAuthToSendCardEvent");
 
-        //data is current turn Player ( as object[] ), first card and trumpcard to play correctly
-        object[] data = new object[] { datasome, currentFirstCard, currentTrumpCard };
+        //data is current turn Player ( as object[] ), first card, trumpcard and boolean fisrtPlayer to play correctly
+        object[] data = new object[] { datasome, currentFirstCard, currentTrumpCard, firstPlayer};
         RaiseEventOptions raiseEventOptions = new RaiseEventOptions() { Receivers = ReceiverGroup.Others };
         PhotonNetwork.RaiseEvent(SendAuthToSendCardEventCode, data, raiseEventOptions, SendOptions.SendReliable);
     }
@@ -772,6 +920,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         float zOffset = 0.03f;
         foreach (string card in deck)
         {
+            //GameObject newCard = PhotonNetwork.Instantiate("Card", new Vector3(DeckForPosition.transform.position.x, DeckForPosition.transform.position.y, DeckForPosition.transform.position.z + zOffset), Quaternion.identity);
             GameObject newCard = Instantiate(cardPrefab, new Vector3(DeckForPosition.transform.position.x, DeckForPosition.transform.position.y, DeckForPosition.transform.position.z + zOffset), Quaternion.identity);
             newCard.name = card;
             newCard.GetComponent<Selectable>().faceUp = true;
@@ -809,6 +958,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
             byte count = CountPlayers();
             if (count < 4)
             {
+                Debug.Log("Add Player Method");
                 AddPlayer(count, customDataPlayer);
             }
 
@@ -833,7 +983,7 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         }
 
         //SendCardEvent - Code = 4
-        else if (eventCode == SendCardEventCode)
+        else if (eventCode == SendCardEventCode)//Check jock lose   L   
         {
             //custom data: Sender and selected card
             object[] sender = (object[])((object[])photonEvent.CustomData)[0];
@@ -844,21 +994,126 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
             playerCounterForfirstCard++;
             if (playerCounterForfirstCard == 4) playerCounterForfirstCard = 0;
 
+            if (playerCounterForfirstCard == 1 && selectedCard.Length == 4)
+            {
+                loseJock.gameObject.SetActive(true);
+                if(selectedCard[3] == 'C')
+                {
+                    loseJock.text = "♣";
+                }
+                else if(selectedCard[3] == 'D')
+                {
+                    loseJock.text = "♦";
+                }
+                else if (selectedCard[3] == 'S')
+                {
+                    loseJock.text = "♠";
+                }
+                else
+                {
+                    loseJock.text = "♥";
+                }
+            }
+
+            for(int i = 0; i < 4; i++)
+            {
+                Debug.Log(playerInfoList[i, 0].ToString());
+            }
+
             object[] first = new object[] { sender[0], sender[1] };
             for (int i = 0; i < 4; i++)
             {
                 object[] second = new object[] { playerInfoList[i, 0], playerInfoList[i, 0] };
+                Debug.Log("Players equal? : " + PlayersEquals(first, second));
                 if (PlayersEquals(first, second))
                 {
                     playerInfoList[i, 6] = selectedCard;
-                    GameObject selected = GameObject.Find(selectedCard);
+                    GameObject selected;
                     if (selectedCard.Length == 4)
                     {
+                        selected = GameObject.Find(selectedCard.Substring(0, 3));
                         selected.GetComponent<Selectable>().faceUp = false;
+                    }
+                    else
+                    {
+                        selected = GameObject.Find(selectedCard);
                     }
                     selected.transform.position = new Vector3(playerCardsPlaces[i].transform.position.x, playerCardsPlaces[i].transform.position.y, 0);
                 }
             }
+        }
+
+        //Code = 7
+        else if (eventCode == WhoTakesHandEventCode)
+        {
+            Debug.Log("Reset Method");
+            //int winner = int.Parse(photonEvent.CustomData.ToString());
+            for (int i = 0; i < 4; i++)
+            {
+                playerInfoList[i, 5] = 0;
+                string cardName = (string)playerInfoList[i, 6];
+                Debug.Log(cardName);
+                GameObject selected = GameObject.Find(cardName.Length == 4 ? cardName.Substring(0, 3) : cardName);
+                selected.transform.position = DeckForPosition.transform.position;
+                selected.GetComponent<Selectable>().faceUp = true;
+                playerInfoList[i, 6] = string.Empty;
+            }
+        }
+
+        //Code = 9
+        else if (eventCode == ClonServerStartGameEventCode)
+        {
+
+            deck = GenerateDeckServer();
+            JockDrawServer();
+            BeforeGameCanvas.enabled = false;
+
+            for (int i = 0; i < 4; i++)
+            {
+                playerNames[i].text = (string)playerInfoList[i, 0];
+            }
+        }
+
+        //Code = 10
+        else if (eventCode == SendRoundAndHandInfoEventCode)
+        {
+            currentRound = int.Parse(((object[])photonEvent.CustomData)[0].ToString());
+            currentHand = int.Parse(((object[])photonEvent.CustomData)[1].ToString());
+        }
+
+        //Code = 11
+        else if (eventCode == SendTurnPlayerEventCode)
+        {
+            int turnPlayer = int.Parse(photonEvent.CustomData.ToString());
+            for (int i = 0; i < 4; i++)
+            {
+                if (i == turnPlayer)
+                {
+                    turnCircles[i].SetActive(true);
+                }
+                else
+                {
+                    turnCircles[i].SetActive(false);
+                }
+            }
+        }
+        else if (eventCode == SendTrumpCardEventCode) 
+        {
+            string trumpCard = photonEvent.CustomData.ToString(); // Can be any Card , "NO" and "NOT"
+
+            Debug.Log("gelen trump : " + trumpCard);
+            Debug.Log("kohne trump : " + currentTrumpCardClonServer);
+
+            if (!currentTrumpCardClonServer.Equals(string.Empty) && !currentTrumpCardClonServer.Equals("NO") && !currentTrumpCardClonServer.Equals("NOT"))
+            {
+                GameObject.Find(currentTrumpCardClonServer).transform.position = new Vector3(DeckForPosition.transform.position.x, DeckForPosition.transform.position.y, 6f);
+            }
+
+            if(!trumpCard.Equals("NO") && !trumpCard.Equals("NOT"))
+            {
+                GameObject.Find(trumpCard).transform.position = new Vector3(DeckForPosition.transform.position.x, DeckForPosition.transform.position.y, -0.5f);
+            }
+            currentTrumpCardClonServer = trumpCard;
         }
     }
 
@@ -891,9 +1146,15 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
         return new System.Random().Next(4);
     }
 
+
+
     private int NextPlayerInt(int curr)
     {
         return curr == 3 ? 0 : curr + 1;
+    }
+    private int PrevPlayerInt(int curr)
+    {
+        return curr == 0 ? 3 : curr - 1;
     }
 
     private bool PlayersEquals(object[] first, object[] second)
