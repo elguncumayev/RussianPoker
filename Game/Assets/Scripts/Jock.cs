@@ -536,9 +536,13 @@ public class Jock : MonoBehaviourPunCallbacks, IOnEventCallback
             {
                 playerInfoList[i, 4] = (int)playerInfoList[i, 4] + (guess * 5 + 5) * (blindRound ? 2 : 1);
             }
-            else
+            else if(guess==0)
             {
                 playerInfoList[i, 4] = (int)playerInfoList[i, 4] + wins * (blindRound ? 2 : 1);
+            }
+            else
+            {
+                playerInfoList[i,4] = (int)playerInfoList[i, 4] - (guess - wins) * 10 * (blindRound ? 2 : 1);
             }
 
             playerInfoList[i, 2] = -1;
